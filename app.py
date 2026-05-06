@@ -1,67 +1,243 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+import os
+import sys
+import json
+import time
 import subprocess
 import shutil
-import os
-import uuid
+from typing import Optional
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+import uvicorn
 
-app = FastAPI()
+app = FastAPI(title="Gen2Sim Master Orchestrator")
 
-# Setup directories
+# --- Configuration ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+BLENDER_PATH = "/opt/blender-4.5.4-linux-x64/blender"
+REGISTRY_FILE = os.path.join(BASE_DIR, "spawned_objects.txt")
 
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(STATIC_DIR, exist_ok=True)
+for d in [OUTPUTS_DIR, STATIC_DIR, UPLOAD_DIR]:
+    os.makedirs(d, exist_ok=True)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Helper Functions ---
+
+def generate_sdf(model_name, visual_path, collision_path, scale, mass, inertia, dim):
+    """
+    Generates a Gazebo SDF file with dynamic scaling and inertial data.
+    """
+    s3 = scale ** 3
+    s5 = scale ** 5
+    m_scaled = mass * s3
+    i_scaled = [i * s5 for i in inertia]
+    
+    # Bounding box for stable collision
+    bx, by, bz = [d * scale for d in dim]
+
+    sdf = f"""<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="{model_name}">
+    <static>false</static>
+    <link name="link">
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>{m_scaled}</mass>
+        <inertia>
+          <ixx>{i_scaled[0]}</ixx>
+          <ixy>{i_scaled[1]}</ixy>
+          <ixz>{i_scaled[2]}</ixz>
+          <iyy>{i_scaled[4]}</iyy>
+          <iyz>{i_scaled[5]}</iyz>
+          <izz>{i_scaled[8]}</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>file:///{visual_path}</uri>
+            <scale>{scale} {scale} {scale}</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>{bx} {by} {bz}</size>
+          </box>
+        </geometry>
+        <surface>
+          <contact>
+            <ode>
+              <kp>10000000.0</kp>
+              <kd>10.0</kd>
+              <max_vel>0.01</max_vel>
+              <min_depth>0.005</min_depth>
+            </ode>
+          </contact>
+          <friction>
+            <ode><mu>1.0</mu><mu2>1.0</mu2></ode>
+          </friction>
+        </surface>
+      </collision>
+    </link>
+  </model>
+</sdf>"""
+    return sdf
+
+def spawn_in_gazebo(sdf_path, model_name, x, y, z):
+    """
+    Calls ROS 2 ros_gz_sim to spawn the model.
+    """
+    cmd = [
+        "ros2", "run", "ros_gz_sim", "create",
+        "-file", sdf_path,
+        "-name", model_name,
+        "-allow_renaming", "true",
+        "-x", str(x), "-y", str(y), "-z", str(z),
+        "-R", "1.57", "-P", "0", "-Y", "0"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.stdout, result.stderr
+
+def get_offset_position(req_x, req_y, req_z, scale):
+    """
+    Simple collision avoidance for multiple spawns.
+    """
+    if not os.path.exists(REGISTRY_FILE):
+        return req_x, req_y, req_z
+    
+    curr_x, curr_y = req_x, req_y
+    padding = 0.2
+    while True:
+        collision = False
+        with open(REGISTRY_FILE, "r") as f:
+            for line in f:
+                try:
+                    px, py, ps = map(float, line.strip().split(','))
+                    dist = ((curr_x - px)**2 + (curr_y - py)**2)**0.5
+                    if dist < (scale + ps)/2 + padding:
+                        collision = True
+                        curr_x += (scale + ps)/2 + padding
+                        break
+                except: continue
+        if not collision: break
+    return curr_x, curr_y, req_z
+
+# --- API Endpoints ---
 
 @app.post("/api/reset")
-async def reset_world():
-    registry_path = os.path.join(BASE_DIR, "spawned_objects.txt")
-    if os.path.exists(registry_path):
-        os.remove(registry_path)
-    return {"status": "success", "message": "Spawning registry reset."}
+async def reset_registry():
+    if os.path.exists(REGISTRY_FILE):
+        os.remove(REGISTRY_FILE)
+    return {"message": "Registry reset."}
 
 @app.post("/api/generate")
-async def generate_model(
+async def generate_pipeline(
     file: UploadFile = File(...),
-    dimension: float = Form(1.0),
+    scale: float = Form(1.0),
     x: float = Form(0.0),
     y: float = Form(0.0),
     z: float = Form(0.5)
 ):
-    # Validate file type
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image.")
-
-    # Save uploaded file
-    file_extension = os.path.splitext(file.filename)[1]
-    temp_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(UPLOAD_DIR, temp_filename)
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    try:
-        # Execute the pipeline script
-        # Using sys.executable to ensure we use the same python environment
-        import sys
-        process = subprocess.run(
-            [sys.executable, "run_infer.py", file_path, str(dimension), str(x), str(y), str(z)],
-            capture_output=True,
-            text=True,
-            check=True
+    timestamp = int(time.time())
+    obj_dir = os.path.join(OUTPUTS_DIR, f"object_{timestamp}")
+    os.makedirs(obj_dir, exist_ok=True)
+    
+    # 1. Save input
+    input_path = os.path.join(UPLOAD_DIR, f"{timestamp}_{file.filename}")
+    with open(input_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+        
+    async def pipeline_iterator():
+        yield f"data: [*] Starting Gen2Sim Pipeline for {file.filename}\n\n"
+        
+        # 2. Run Inference
+        yield "data: [*] Phase 1: Remote Inference (GPU Server)...\n\n"
+        glb_path = os.path.join(obj_dir, "raw_mesh.glb")
+        proc = subprocess.Popen(
+            [sys.executable, "run_infer.py", input_path, glb_path],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
         )
-        return {"status": "success", "message": f"Model ({dimension}m) spawned in Gazebo!", "output": process.stdout}
-    except subprocess.CalledProcessError as e:
-        return {"status": "error", "message": "Pipeline execution failed.", "error": e.stderr}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+        
+        meta = None
+        for line in iter(proc.stdout.readline, ""):
+            if "---METADATA_START---" in line:
+                meta_json = proc.stdout.readline().strip()
+                meta = json.loads(meta_json)
+                continue
+            yield f"data: {line}\n\n"
+        proc.wait()
+        
+        if proc.returncode != 0:
+            yield "data: [!] Inference failed.\n\n"
+            return
 
-# Serve static files
+        # 3. Run Blender Processing
+        yield "data: [*] Phase 2: Local Blender Processing (Baking & Normalization)...\n\n"
+        blender_script = os.path.join(BASE_DIR, "text2.py")
+        blender_cmd = [
+            BLENDER_PATH, "--background", "--python", blender_script, "--",
+            glb_path, obj_dir
+        ]
+        proc = subprocess.Popen(blender_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        
+        dims = [1.0, 1.0, 1.0]
+        for line in iter(proc.stdout.readline, ""):
+            if "---DIMENSIONS_START---" in line:
+                dim_str = proc.stdout.readline().strip()
+                dims = [float(d) for d in dim_str.split(",")]
+                continue
+            yield f"data: {line}\n\n"
+        proc.wait()
+
+        # 4. Generate SDF & Spawn
+        yield "data: [*] Phase 3: Gazebo Integration (ROS 2 Jazzy)...\n\n"
+        
+        final_x, final_y, final_z = get_offset_position(x, y, z, scale)
+        with open(REGISTRY_FILE, "a") as f:
+            f.write(f"{final_x},{final_y},{scale}\n")
+
+        visual_obj = os.path.join(obj_dir, "visual.obj")
+        collision_obj = os.path.join(obj_dir, "collision.obj")
+        
+        mass = meta['mass'] if meta else 1.0
+        inertia = meta['inertia'] if meta else [0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1]
+        
+        sdf_content = generate_sdf(f"model_{timestamp}", visual_obj, collision_obj, scale, mass, inertia, dims)
+        sdf_path = os.path.join(obj_dir, "model.sdf")
+        with open(sdf_path, "w") as f: f.write(sdf_content)
+        
+        yield f"data: [*] Spawning at ({final_x:.2f}, {final_y:.2f}, {final_z:.2f})...\n\n"
+        s_out, s_err = spawn_in_gazebo(sdf_path, f"gen2sim_{timestamp}", final_x, final_y, final_z)
+        yield f"data: {s_out}\n\n"
+        if s_err: yield f"data: [!] Gazebo Warning: {s_err}\n\n"
+
+        # Final Asset Links
+        assets = {
+            "glb": f"/outputs/object_{timestamp}/raw_mesh.glb",
+            "visual": f"/outputs/object_{timestamp}/visual.obj",
+            "collision": f"/outputs/object_{timestamp}/collision.obj",
+            "sdf": f"/outputs/object_{timestamp}/model.sdf",
+            "texture": f"/outputs/object_{timestamp}/texture.png"
+        }
+        yield f"data: ---ASSETS_START---{json.dumps(assets)}---ASSETS_END---\n\n"
+        yield "data: [SUCCESS] Pipeline complete.\n\n"
+
+    return StreamingResponse(pipeline_iterator(), media_type="text/event-stream")
+
+app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

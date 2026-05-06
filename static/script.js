@@ -12,6 +12,8 @@ const preview = document.getElementById('preview');
 const placeholder = document.querySelector('.upload-placeholder');
 const submitBtn = document.getElementById('submitBtn');
 const status = document.getElementById('status');
+const downloads = document.getElementById('downloads');
+const downloadGrid = document.getElementById('downloadGrid');
 
 // --- Theme Management ---
 const savedTheme = localStorage.getItem('theme') || 'light';
@@ -100,17 +102,51 @@ uploadForm.addEventListener('submit', async (e) => {
         if (result.status === 'success') {
             status.className = 'success';
             status.textContent = `✅ ${result.message}`;
+            
+            // Show download links
+            if (result.assets && Object.keys(result.assets).length > 0) {
+                showDownloadLinks(result.assets);
+            }
         } else {
             status.className = 'error';
             status.textContent = `❌ Error: ${result.message}\n${result.error || ''}`;
+            if (downloads) downloads.style.display = 'none';
         }
     } catch (err) {
         status.className = 'error';
         status.textContent = `❌ Network Error: ${err.message}`;
+        if (downloads) downloads.style.display = 'none';
     } finally {
         setFormState(false);
     }
 });
+
+function showDownloadLinks(assets) {
+    if (!downloadGrid || !downloads) return;
+    downloadGrid.innerHTML = '';
+    downloads.style.display = 'block';
+    
+    const labels = {
+        glb: 'GLB Mesh',
+        obj: 'Visual OBJ',
+        mtl: 'MTL Material',
+        collision: 'Collision OBJ',
+        urdf: 'URDF Robot',
+        texture: 'Texture PNG'
+    };
+
+    Object.entries(assets).forEach(([key, url]) => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = url.split('/').pop();
+        a.className = 'download-link';
+        a.innerHTML = `
+            <span>${labels[key] || key.toUpperCase()}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        `;
+        downloadGrid.appendChild(a);
+    });
+}
 
 function setFormState(isLoading) {
     submitBtn.disabled = isLoading;
