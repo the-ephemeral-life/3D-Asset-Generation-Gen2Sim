@@ -33,17 +33,29 @@ app.add_middleware(
 
 # --- Helper Functions ---
 
-def generate_sdf(model_name, visual_path, collision_path, scale, mass, inertia, dim):
+def generate_sdf(model_name, visual_path, collision_path, scale, mass, inertia, dim, com):
     """
-    Generates a Gazebo SDF file with dynamic scaling and inertial data.
+    Generates a Gazebo SDF file with stable box collision and real inertial data.
     """
+    # Scale inertial properties
+    # Mass scales by s^3, Inertia by s^5
     s3 = scale ** 3
     s5 = scale ** 5
     m_scaled = mass * s3
     i_scaled = [i * s5 for i in inertia]
     
-    # Bounding box for stable collision
+    # Bounding box for stable collision (scaled dimensions)
     bx, by, bz = [d * scale for d in dim]
+    
+    # Align the bottom of the mesh with the model origin
+    # Most generated 3D models are centered at origin, so we shift up by half-height
+    z_offset = bz / 2.0
+    
+    # Scale and shift the Center of Mass
+    # com from trimesh is relative to the mesh origin
+    com_x = com[0] * scale
+    com_y = com[1] * scale
+    com_z = (com[2] * scale) + z_offset
 
     sdf = f"""<?xml version="1.0" ?>
 <sdf version="1.6">
@@ -51,7 +63,7 @@ def generate_sdf(model_name, visual_path, collision_path, scale, mass, inertia, 
     <static>false</static>
     <link name="link">
       <inertial>
-        <pose>0 0 0 0 0 0</pose>
+        <pose>{com_x} {com_y} {com_z} 0 0 0</pose>
         <mass>{m_scaled}</mass>
         <inertia>
           <ixx>{i_scaled[0]}</ixx>
@@ -63,6 +75,7 @@ def generate_sdf(model_name, visual_path, collision_path, scale, mass, inertia, 
         </inertia>
       </inertial>
       <visual name="visual">
+        <pose>0 0 {z_offset} 0 0 0</pose>
         <geometry>
           <mesh>
             <uri>file:///{visual_path}</uri>
@@ -71,6 +84,7 @@ def generate_sdf(model_name, visual_path, collision_path, scale, mass, inertia, 
         </geometry>
       </visual>
       <collision name="collision">
+        <pose>0 0 {z_offset} 0 0 0</pose>
         <geometry>
           <box>
             <size>{bx} {by} {bz}</size>
@@ -105,7 +119,6 @@ def spawn_in_gazebo(sdf_path, model_name, x, y, z):
         "-name", model_name,
         "-allow_renaming", "true",
         "-x", str(x), "-y", str(y), "-z", str(z),
-        "-R", "1.57", "-P", "0", "-Y", "0"
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.stdout, result.stderr
@@ -148,7 +161,7 @@ async def generate_pipeline(
     scale: float = Form(1.0),
     x: float = Form(0.0),
     y: float = Form(0.0),
-    z: float = Form(0.5)
+    z: float = Form(1.0) # Default spawn Z to 1.0 to prevent clipping
 ):
     timestamp = int(time.time())
     obj_dir = os.path.join(OUTPUTS_DIR, f"object_{timestamp}")
@@ -174,7 +187,11 @@ async def generate_pipeline(
         for line in iter(proc.stdout.readline, ""):
             if "---METADATA_START---" in line:
                 meta_json = proc.stdout.readline().strip()
-                meta = json.loads(meta_json)
+                try:
+                    meta = json.loads(meta_json)
+                    yield f"data: [*] Parsed physical metadata: Mass={meta['mass']:.4f}\n\n"
+                except:
+                    yield "data: [!] Failed to parse metadata JSON.\n\n"
                 continue
             yield f"data: {line}\n\n"
         proc.wait()
@@ -186,9 +203,16 @@ async def generate_pipeline(
         # 3. Run Blender Processing
         yield "data: [*] Phase 2: Local Blender Processing (Baking & Normalization)...\n\n"
         blender_script = os.path.join(BASE_DIR, "text2.py")
+        
+        # Calculate object index for unique material naming
+        try:
+            obj_index = len([d for d in os.listdir(OUTPUTS_DIR) if os.path.isdir(os.path.join(OUTPUTS_DIR, d))])
+        except:
+            obj_index = 0
+            
         blender_cmd = [
             BLENDER_PATH, "--background", "--python", blender_script, "--",
-            glb_path, obj_dir
+            glb_path, obj_dir, str(obj_index), str(timestamp)
         ]
         proc = subprocess.Popen(blender_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         
@@ -196,7 +220,11 @@ async def generate_pipeline(
         for line in iter(proc.stdout.readline, ""):
             if "---DIMENSIONS_START---" in line:
                 dim_str = proc.stdout.readline().strip()
-                dims = [float(d) for d in dim_str.split(",")]
+                try:
+                    dims = [float(d) for d in dim_str.split(",")]
+                    yield f"data: [*] Parsed dimensions: {dims[0]:.2f}x{dims[1]:.2f}x{dims[2]:.2f}\n\n"
+                except:
+                    yield "data: [!] Failed to parse dimensions.\n\n"
                 continue
             yield f"data: {line}\n\n"
         proc.wait()
@@ -213,8 +241,9 @@ async def generate_pipeline(
         
         mass = meta['mass'] if meta else 1.0
         inertia = meta['inertia'] if meta else [0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1]
+        com = meta['com'] if meta else [0.0, 0.0, 0.0]
         
-        sdf_content = generate_sdf(f"model_{timestamp}", visual_obj, collision_obj, scale, mass, inertia, dims)
+        sdf_content = generate_sdf(f"model_{timestamp}", visual_obj, collision_obj, scale, mass, inertia, dims, com)
         sdf_path = os.path.join(obj_dir, "model.sdf")
         with open(sdf_path, "w") as f: f.write(sdf_content)
         
@@ -229,7 +258,7 @@ async def generate_pipeline(
             "visual": f"/outputs/object_{timestamp}/visual.obj",
             "collision": f"/outputs/object_{timestamp}/collision.obj",
             "sdf": f"/outputs/object_{timestamp}/model.sdf",
-            "texture": f"/outputs/object_{timestamp}/texture.png"
+            "texture": f"/outputs/object_{timestamp}/texture_{timestamp}.png"
         }
         yield f"data: ---ASSETS_START---{json.dumps(assets)}---ASSETS_END---\n\n"
         yield "data: [SUCCESS] Pipeline complete.\n\n"

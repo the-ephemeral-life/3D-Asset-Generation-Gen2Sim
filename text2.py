@@ -31,6 +31,10 @@ argv = sys.argv
 argv = argv[argv.index("--") + 1:]
 input_path = argv[0]
 output_dir = argv[1]
+# Get index and timestamp for uniqueness
+obj_index = argv[2] if len(argv) > 2 else "0"
+timestamp = argv[3] if len(argv) > 3 else "0"
+
 os.makedirs(output_dir, exist_ok=True)
 
 # --------- CLEAN SCENE ----------
@@ -69,7 +73,7 @@ else:
 bpy.ops.object.mode_set(mode='OBJECT')
 
 # --------- CREATE BAKE IMAGE ----------
-bake_img = bpy.data.images.new("BakedTexture", width=TEXTURE_RES, height=TEXTURE_RES)
+bake_img = bpy.data.images.new(f"Bake_{timestamp}", width=TEXTURE_RES, height=TEXTURE_RES)
 
 # --------- MATERIAL RANDOMIZATION ----------
 def randomize_material(mat):
@@ -141,13 +145,16 @@ bpy.context.view_layer.objects.active = obj
 bpy.ops.object.bake(type='DIFFUSE')
 
 # --------- SAVE TEXTURE ----------
-texture_path = os.path.join(output_dir, "texture.png")
+texture_filename = f"texture_{timestamp}.png"
+texture_path = os.path.join(output_dir, texture_filename)
 bake_img.filepath_raw = texture_path
 bake_img.file_format = 'PNG'
 bake_img.save()
 
 # --------- CREATE CLEAN VISUAL MATERIAL ----------
-final_mat = bpy.data.materials.new(name="FinalMaterial")
+# Enforce strict uniqueness for material name to prevent Gazebo collisions
+unique_mat_name = f"Material_{obj_index}_{timestamp}"
+final_mat = bpy.data.materials.new(name=unique_mat_name)
 final_mat.use_nodes = True
 nodes = final_mat.node_tree.nodes
 links = final_mat.node_tree.links
@@ -163,7 +170,7 @@ obj.data.materials.append(final_mat)
 
 # --------- EXPORT VISUAL MESH ----------
 visual_path = os.path.join(output_dir, "visual.obj")
-bpy.ops.wm.obj_export(filepath=visual_path, export_selected_objects=True)
+bpy.ops.wm.obj_export(filepath=visual_path, export_selected_objects=True, up_axis = 'Z', forward_axis = 'Y')
 
 # --------- CREATE COLLISION MESH ----------
 bpy.ops.object.select_all(action='DESELECT')
