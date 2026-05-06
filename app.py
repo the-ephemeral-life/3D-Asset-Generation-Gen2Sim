@@ -16,10 +16,20 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 
+@app.post("/api/reset")
+async def reset_world():
+    registry_path = os.path.join(BASE_DIR, "spawned_objects.txt")
+    if os.path.exists(registry_path):
+        os.remove(registry_path)
+    return {"status": "success", "message": "Spawning registry reset."}
+
 @app.post("/api/generate")
 async def generate_model(
     file: UploadFile = File(...),
-    dimension: float = Form(1.0)
+    dimension: float = Form(1.0),
+    x: float = Form(0.0),
+    y: float = Form(0.0),
+    z: float = Form(0.5)
 ):
     # Validate file type
     if not file.content_type.startswith("image/"):
@@ -38,7 +48,7 @@ async def generate_model(
         # Using sys.executable to ensure we use the same python environment
         import sys
         process = subprocess.run(
-            [sys.executable, "run_infer.py", file_path, str(dimension)],
+            [sys.executable, "run_infer.py", file_path, str(dimension), str(x), str(y), str(z)],
             capture_output=True,
             text=True,
             check=True

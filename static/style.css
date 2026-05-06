@@ -65,8 +65,15 @@ h1 {
     box-shadow: var(--shadow);
 }
 
-.input-group {
+.input-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
     margin-bottom: 1.5rem;
+}
+
+.input-group {
+    margin-bottom: 0;
 }
 
 .input-group label {
