@@ -184,7 +184,7 @@ mod = collision_obj.modifiers.new(name="Decimate", type='DECIMATE')
 mod.ratio = COLLISION_DECIMATE
 bpy.ops.object.modifier_apply(modifier="Decimate")
 collision_path = os.path.join(output_dir, "collision.obj")
-bpy.ops.wm.obj_export(filepath=collision_path, export_selected_objects=True)
+bpy.ops.wm.obj_export(filepath=collision_path, export_selected_objects=True, up_axis = 'Z', forward_axis = 'Y')
 
 # Output dimensions for Gazebo Stable Box Collision
 print(f"---DIMENSIONS_START---")
