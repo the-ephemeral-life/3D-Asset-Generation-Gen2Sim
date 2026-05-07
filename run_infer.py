@@ -7,10 +7,10 @@ import json
 # =========================================================
 # CONFIG - Remote GPU Inference Server
 # =========================================================
-HOST = "172.18.40.126"
+HOST = "172.18.40.126" 
 PORT = 22
 USERNAME = "teaching"
-PASSWORD = "ds123"   
+PASSWORD = "import from env for personal use"
 
 REMOTE_BASE = "/home/teaching/Desktop/stable-fast-3d"
 REMOTE_INPUT_DIR = f"{REMOTE_BASE}/demo_files"
