@@ -23,6 +23,7 @@ Before starting, ensure your computer has the following:
 *   **A Remote GPU Server**: This project uses a powerful remote computer to "think" (inference). You must have the IP address and password for this server.
 *   **Blender**: Version 4.2 or higher.
 *   **ROS 2 & Gazebo**: Specifically ROS 2 Jazzy or Humble with Gazebo Sim.
+*   **ssh**: since ssh is on iit mandi gpu , you'd have to be connected to the network to access.
 
 ---
 
@@ -112,13 +113,50 @@ Now, let's start the "brain" of the project.
 ## 📂 File Structure (What's in this folder?)
 
 *   `app.py`: The main controller (Master).
-*   `run_infer.py`: Handles the remote GPU connection.
+*   `run_infer.py`: Handles the remote GPU connection. handles all the commands to run on gpu ssh
 *   `text2.py`: The Blender script for materials and collisions.
 *   `outputs/`: Where your finished 3D models are saved.
 *   `uploads/`: Where your uploaded photos are kept.
 *   `static/`: The files for the website you see in your browser.
+*   `run_on_gpu.py`: Handles the inference on that gpu and adds noise via params 
+---
+
+## Acknowledgements
+
+This project is heavily inspired by and built upon the excellent work done in:
+
+- StableFast3D by Stability AI
+
+Original repositories:
+
+- https://github.com/Stability-AI/stable-fast-3d
+
+We extend these works with additional utilities and experimental pipelines, including:
+- noisy inference
+- geometry perturbation
+- robustness-oriented asset generation
+- procedural augmentation workflows
+
+Huge credit to the original authors and contributors for making these projects open-source.
+
 
 ---
+
+## StableFast3D Model Access
+
+This project requires downloading the official StableFast3D model weights from Hugging Face.
+
+Before downloading the model:
+
+1. Create a Hugging Face account:
+   https://huggingface.co/
+
+2. Request / accept access to the StableFast3D model repository on Hugging Face.
+
+3. Login locally using your Hugging Face token:
+
+```bash
+huggingface-cli login
 
 ## ⚠️ Troubleshooting
 
