@@ -201,7 +201,14 @@
 
         function showAssets(assets) {
             assetGrid.innerHTML = '';
-            const labels = { glb: 'GLB Mesh', visual: 'Visual OBJ', collision: 'Collision OBJ', sdf: 'Model SDF', texture: 'Texture' };
+            const labels = { 
+                glb: 'GLB Mesh', 
+                visual: 'Visual OBJ', 
+                collision: 'Collision OBJ', 
+                sdf: 'Model SDF', 
+                urdf: 'Model URDF',
+                texture: 'Texture' 
+            };
             
             Object.entries(assets).forEach(([key, url]) => {
                 const a = document.createElement('a');
@@ -209,7 +216,7 @@
                 a.download = url.split('/').pop();
                 a.className = "flex items-center justify-between p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-[11px] font-bold transition-all transform hover:-translate-y-0.5";
                 a.innerHTML = `
-                    <span class="text-slate-300 uppercase">${labels[key]}</span>
+                    <span class="text-slate-300 uppercase">${labels[key] || key}</span>
                     <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                 `;
                 assetGrid.appendChild(a);

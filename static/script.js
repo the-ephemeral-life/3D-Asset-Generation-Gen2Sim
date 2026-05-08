@@ -128,10 +128,11 @@ function showDownloadLinks(assets) {
     
     const labels = {
         glb: 'GLB Mesh',
-        obj: 'Visual OBJ',
+        visual: 'Visual OBJ',
         mtl: 'MTL Material',
         collision: 'Collision OBJ',
-        urdf: 'URDF Robot',
+        sdf: 'Model SDF',
+        urdf: 'Model URDF',
         texture: 'Texture PNG'
     };
 

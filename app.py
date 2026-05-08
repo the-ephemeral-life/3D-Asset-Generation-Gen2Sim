@@ -33,89 +33,51 @@ app.add_middleware(
 
 # --- Helper Functions ---
 
-def generate_sdf(model_name, visual_path, collision_path, scale, mass, inertia, dim, com):
+def generate_urdf(model_name, visual_path, collision_path, scale, mass, inertia, dim, com):
     """
-    Generates a Gazebo SDF file with stable box collision and real inertial data.
+    Generates a URDF file with stable box collision and real inertial data.
     """
-    # Scale inertial properties
-    # Mass scales by s^3, Inertia by s^5
     s3 = scale ** 3
     s5 = scale ** 5
     m_scaled = mass * s3
     i_scaled = [i * s5 for i in inertia]
-    
-    # Bounding box for stable collision (scaled dimensions)
     bx, by, bz = [d * scale for d in dim]
-    
-    # Align the bottom of the mesh with the model origin
-    # Most generated 3D models are centered at origin, so we shift up by half-height
     z_offset = bz / 2.0
-    
-    # Scale and shift the Center of Mass
-    # com from trimesh is relative to the mesh origin
     com_x = com[0] * scale
     com_y = com[1] * scale
     com_z = (com[2] * scale) + z_offset
 
-    sdf = f"""<?xml version="1.0" ?>
-<sdf version="1.6">
-  <model name="{model_name}">
-    <static>false</static>
-    <link name="link">
-      <inertial>
-        <pose>{com_x} {com_y} {com_z} 0 0 0</pose>
-        <mass>{m_scaled}</mass>
-        <inertia>
-          <ixx>{i_scaled[0]}</ixx>
-          <ixy>{i_scaled[1]}</ixy>
-          <ixz>{i_scaled[2]}</ixz>
-          <iyy>{i_scaled[4]}</iyy>
-          <iyz>{i_scaled[5]}</iyz>
-          <izz>{i_scaled[8]}</izz>
-        </inertia>
-      </inertial>
-      <visual name="visual">
-        <pose>0 0 {z_offset} 0 0 0</pose>
-        <geometry>
-          <mesh>
-            <uri>file:///{visual_path}</uri>
-            <scale>{scale} {scale} {scale}</scale>
-          </mesh>
-        </geometry>
-      </visual>
-      <collision name="collision">
-        <pose>0 0 {z_offset} 0 0 0</pose>
-        <geometry>
-          <box>
-            <size>{bx} {by} {bz}</size>
-          </box>
-        </geometry>
-        <surface>
-          <contact>
-            <ode>
-              <kp>10000000.0</kp>
-              <kd>10.0</kd>
-              <max_vel>0.01</max_vel>
-              <min_depth>0.005</min_depth>
-            </ode>
-          </contact>
-          <friction>
-            <ode><mu>1.0</mu><mu2>1.0</mu2></ode>
-          </friction>
-        </surface>
-      </collision>
-    </link>
-  </model>
-</sdf>"""
-    return sdf
+    urdf = f"""<?xml version="1.0" ?>
+<robot name="{model_name}">
+  <link name="base_link">
+    <inertial>
+      <origin xyz="{com_x} {com_y} {com_z}" rpy="0 0 0"/>
+      <mass value="{m_scaled}"/>
+      <inertia ixx="{i_scaled[0]}" ixy="{i_scaled[1]}" ixz="{i_scaled[2]}" iyy="{i_scaled[4]}" iyz="{i_scaled[5]}" izz="{i_scaled[8]}"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 {z_offset}" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="{visual_path}" scale="{scale} {scale} {scale}"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 {z_offset}" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="{collision_path}" scale="{scale} {scale} {scale}"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>"""
+    return urdf
 
-def spawn_in_gazebo(sdf_path, model_name, x, y, z):
+def spawn_in_gazebo(urdf_path, model_name, x, y, z):
     """
     Calls ROS 2 ros_gz_sim to spawn the model.
     """
     cmd = [
         "ros2", "run", "ros_gz_sim", "create",
-        "-file", sdf_path,
+        "-file", urdf_path,
         "-name", model_name,
         "-allow_renaming", "true",
         "-x", str(x), "-y", str(y), "-z", str(z),
@@ -229,7 +191,7 @@ async def generate_pipeline(
             yield f"data: {line}\n\n"
         proc.wait()
 
-        # 4. Generate SDF & Spawn
+        # 4. Generate URDF & Spawn
         yield "data: [*] Phase 3: Gazebo Integration (ROS 2 Jazzy)...\n\n"
         
         final_x, final_y, final_z = get_offset_position(x, y, z, scale)
@@ -243,12 +205,12 @@ async def generate_pipeline(
         inertia = meta['inertia'] if meta else [0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1]
         com = meta['com'] if meta else [0.0, 0.0, 0.0]
         
-        sdf_content = generate_sdf(f"model_{timestamp}", visual_obj, collision_obj, scale, mass, inertia, dims, com)
-        sdf_path = os.path.join(obj_dir, "model.sdf")
-        with open(sdf_path, "w") as f: f.write(sdf_content)
+        urdf_content = generate_urdf(f"model_{timestamp}", "visual.obj", "collision.obj", scale, mass, inertia, dims, com)
+        urdf_path = os.path.join(obj_dir, "model.urdf")
+        with open(urdf_path, "w") as f: f.write(urdf_content)
         
         yield f"data: [*] Spawning at ({final_x:.2f}, {final_y:.2f}, {final_z:.2f})...\n\n"
-        s_out, s_err = spawn_in_gazebo(sdf_path, f"gen2sim_{timestamp}", final_x, final_y, final_z)
+        s_out, s_err = spawn_in_gazebo(urdf_path, f"gen2sim_{timestamp}", final_x, final_y, final_z)
         yield f"data: {s_out}\n\n"
         if s_err: yield f"data: [!] Gazebo Warning: {s_err}\n\n"
 
@@ -257,7 +219,7 @@ async def generate_pipeline(
             "glb": f"/outputs/object_{timestamp}/raw_mesh.glb",
             "visual": f"/outputs/object_{timestamp}/visual.obj",
             "collision": f"/outputs/object_{timestamp}/collision.obj",
-            "sdf": f"/outputs/object_{timestamp}/model.sdf",
+            "urdf": f"/outputs/object_{timestamp}/model.urdf",
             "texture": f"/outputs/object_{timestamp}/texture_{timestamp}.png"
         }
         yield f"data: ---ASSETS_START---{json.dumps(assets)}---ASSETS_END---\n\n"
