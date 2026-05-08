@@ -91,10 +91,11 @@ Now, let's start the "brain" of the project.
     ```bash
     python3 app.py
     ```
-3.  You should see a message saying: `Uvicorn running on http://0.0.0.0:8000`.
+5. [Step 5: Using the Web Dashboard](#-step-5-using-the-web-dashboard)
+6. [🎨 Feature: Procedural Texture Randomization](#-feature-procedural-texture-randomization)
 
 ---
-
+...
 ## 🌐 Step 5: Using the Web Dashboard
 
 1.  Open your web browser (Chrome or Firefox).
@@ -103,12 +104,27 @@ Now, let's start the "brain" of the project.
     *   Click **"Choose File"** and select a photo of an object (JPG or PNG).
     *   (Optional) Adjust the **Scale** (size) or **X/Y/Z** coordinates.
     *   Click the **"Generate & Spawn"** button.
-4.  **Watch the Logs**: The screen will show you real-time progress:
-    *   *Phase 1*: Talking to the GPU server.
-    *   *Phase 2*: Blender is cleaning the mesh and baking textures.
-    *   *Phase 3*: The object is being teleported into Gazebo!
+4.  **Watch the Logs & Stats**: 
+    *   The screen will show real-time progress.
+    *   Once complete, the **"Generated Assets"** header will display the **Vertex Count** (Mesh Complexity) of your model.
+    *   Download your **URDF** or textures directly from the grid.
 
 ---
+
+## 🎨 Feature: Procedural Texture Randomization
+
+Gen2Sim includes a powerful randomization engine in `text2.py`. Even if you upload the **exact same image** multiple times, the pipeline will generate unique variations of the object.
+
+### How it Works:
+*   **Dirt & Weathering**: The scale and intensity of procedural "dirt" layers are jittered. Some models will look pristine, while others look heavily used.
+*   **Surface Detail (Bump)**: The micro-texture of the surface varies. The "bumpiness" and roughness are randomized to prevent identical reflections.
+*   **Color Jitter**: Subtle shifts in Hue, Saturation, and Value are applied to the baked textures to ensure visual variety.
+*   **Physical Properties**: Roughness and Metallic values are slightly randomized, giving each object unique light-reactive properties in Gazebo.
+
+This ensures that your simulation environment feels diverse and realistic, with a population of "similar but unique" assets.
+
+---
+
 
 ## 📂 File Structure (What's in this folder?)
 
