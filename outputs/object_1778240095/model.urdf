@@ -1,0 +1,22 @@
+<?xml version="1.0" ?>
+<robot name="model_1778240095">
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0.022671160942950186 -0.13604742868794287 1.3059378083381719" rpy="0 0 0"/>
+      <mass value="1.1689014454353817"/>
+      <inertia ixx="0.2715806907337175" ixy="0.2497162730970323" ixz="-0.06231044741026131" iyy="0.7666755289431018" iyz="0.029076669767277817" izz="0.9810823164377054"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 1.292724072933197" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="visual.obj" scale="3.0 3.0 3.0"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 1.292724072933197" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="collision.obj" scale="3.0 3.0 3.0"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

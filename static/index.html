@@ -210,7 +210,13 @@
                 texture: 'Texture' 
             };
             
+            // Update vertex count in header if present
+            const vcount = assets.vcount || 0;
+            const title = document.querySelector('#downloadSection h3');
+            if (title) title.innerHTML = `Generated Assets <span class="ml-2 px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-md text-[10px]">${vcount.toLocaleString()} Vertices</span>`;
+
             Object.entries(assets).forEach(([key, url]) => {
+                if (key === 'vcount') return; // Skip non-link entries
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = url.split('/').pop();

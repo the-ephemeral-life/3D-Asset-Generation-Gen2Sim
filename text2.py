@@ -186,8 +186,13 @@ bpy.ops.object.modifier_apply(modifier="Decimate")
 collision_path = os.path.join(output_dir, "collision.obj")
 bpy.ops.wm.obj_export(filepath=collision_path, export_selected_objects=True, up_axis = 'Z', forward_axis = 'Y')
 
-# Output dimensions for Gazebo Stable Box Collision
+# Output dimensions and vertex count for the orchestrator
 print(f"---DIMENSIONS_START---")
 print(f"{obj.dimensions[0]},{obj.dimensions[1]},{obj.dimensions[2]}")
 print(f"---DIMENSIONS_END---")
+
+print(f"---VERTEX_COUNT_START---")
+print(f"{len(obj.data.vertices)}")
+print(f"---VERTEX_COUNT_END---")
+
 print("Processing complete")

@@ -179,6 +179,7 @@ async def generate_pipeline(
         proc = subprocess.Popen(blender_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         
         dims = [1.0, 1.0, 1.0]
+        vcount = 0
         for line in iter(proc.stdout.readline, ""):
             if "---DIMENSIONS_START---" in line:
                 dim_str = proc.stdout.readline().strip()
@@ -187,6 +188,14 @@ async def generate_pipeline(
                     yield f"data: [*] Parsed dimensions: {dims[0]:.2f}x{dims[1]:.2f}x{dims[2]:.2f}\n\n"
                 except:
                     yield "data: [!] Failed to parse dimensions.\n\n"
+                continue
+            if "---VERTEX_COUNT_START---" in line:
+                v_str = proc.stdout.readline().strip()
+                try:
+                    vcount = int(v_str)
+                    yield f"data: [*] Mesh Complexity: {vcount} vertices\n\n"
+                except:
+                    yield "data: [!] Failed to parse vertex count.\n\n"
                 continue
             yield f"data: {line}\n\n"
         proc.wait()
@@ -220,7 +229,8 @@ async def generate_pipeline(
             "visual": f"/outputs/object_{timestamp}/visual.obj",
             "collision": f"/outputs/object_{timestamp}/collision.obj",
             "urdf": f"/outputs/object_{timestamp}/model.urdf",
-            "texture": f"/outputs/object_{timestamp}/texture_{timestamp}.png"
+            "texture": f"/outputs/object_{timestamp}/texture_{timestamp}.png",
+            "vcount": vcount
         }
         yield f"data: ---ASSETS_START---{json.dumps(assets)}---ASSETS_END---\n\n"
         yield "data: [SUCCESS] Pipeline complete.\n\n"
