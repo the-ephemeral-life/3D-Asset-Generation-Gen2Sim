@@ -10,7 +10,7 @@ import json
 HOST = "172.18.40.126" 
 PORT = 22
 USERNAME = "teaching"
-PASSWORD = "import from env for personal use"
+PASSWORD = "ds123"
 
 REMOTE_BASE = "/home/teaching/Desktop/stable-fast-3d"
 REMOTE_INPUT_DIR = f"{REMOTE_BASE}/demo_files"
