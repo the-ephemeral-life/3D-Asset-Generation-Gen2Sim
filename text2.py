@@ -120,15 +120,39 @@ def randomize_material(mat):
         noise = nodes.new(type='ShaderNodeTexNoise')
         ramp = nodes.new(type='ShaderNodeValToRGB')
         mix = nodes.new(type='ShaderNodeMixRGB')
-        mapping.inputs["Scale"].default_value = (DIRT_SCALE, DIRT_SCALE, DIRT_SCALE)
+        
+        # Jitter dirt properties
+        curr_dirt_scale = DIRT_SCALE * random.uniform(0.6, 1.8)
+        curr_dirt_strength = clamp(DIRT_STRENGTH + random.uniform(-0.15, 0.15), 0.05, 0.5)
+        
+        mapping.inputs["Scale"].default_value = (curr_dirt_scale, curr_dirt_scale, curr_dirt_scale)
         ramp.color_ramp.elements[0].position = 0.35
-        mix.blend_type = 'MULTIPLY'; mix.inputs["Fac"].default_value = DIRT_STRENGTH
+        mix.blend_type = 'MULTIPLY'; mix.inputs["Fac"].default_value = curr_dirt_strength
+        
         links.new(texcoord.outputs["Object"], mapping.inputs["Vector"])
         links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
         links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
         src = base_input.links[0].from_socket; links.remove(base_input.links[0])
         links.new(src, mix.inputs[1]); links.new(ramp.outputs["Color"], mix.inputs[2])
         links.new(mix.outputs["Color"], base_input)
+
+    # Bump/Surface Detail Jitter
+    if ADD_BUMP:
+        bump = nodes.new(type='ShaderNodeBump')
+        b_noise = nodes.new(type='ShaderNodeTexNoise')
+        b_mapping = nodes.new(type='ShaderNodeMapping')
+        b_texcoord = nodes.new(type='ShaderNodeTexCoord')
+        
+        curr_bump_scale = BUMP_SCALE * random.uniform(0.5, 2.5)
+        curr_bump_strength = clamp(BUMP_STRENGTH + random.uniform(-0.1, 0.2), 0.02, 0.4)
+        
+        bump.inputs["Strength"].default_value = curr_bump_strength
+        b_noise.inputs["Scale"].default_value = curr_bump_scale
+        
+        links.new(b_texcoord.outputs["Object"], b_mapping.inputs["Vector"])
+        links.new(b_mapping.outputs["Vector"], b_noise.inputs["Vector"])
+        links.new(b_noise.outputs["Fac"], bump.inputs["Height"])
+        links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 
 for mat in obj.data.materials:
     randomize_material(mat)

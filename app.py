@@ -87,27 +87,9 @@ def spawn_in_gazebo(urdf_path, model_name, x, y, z):
 
 def get_offset_position(req_x, req_y, req_z, scale):
     """
-    Simple collision avoidance for multiple spawns.
+    Returns the requested position directly, disabling collision avoidance.
     """
-    if not os.path.exists(REGISTRY_FILE):
-        return req_x, req_y, req_z
-    
-    curr_x, curr_y = req_x, req_y
-    padding = 0.2
-    while True:
-        collision = False
-        with open(REGISTRY_FILE, "r") as f:
-            for line in f:
-                try:
-                    px, py, ps = map(float, line.strip().split(','))
-                    dist = ((curr_x - px)**2 + (curr_y - py)**2)**0.5
-                    if dist < (scale + ps)/2 + padding:
-                        collision = True
-                        curr_x += (scale + ps)/2 + padding
-                        break
-                except: continue
-        if not collision: break
-    return curr_x, curr_y, req_z
+    return req_x, req_y, req_z
 
 # --- API Endpoints ---
 
@@ -204,8 +186,6 @@ async def generate_pipeline(
         yield "data: [*] Phase 3: Gazebo Integration (ROS 2 Jazzy)...\n\n"
         
         final_x, final_y, final_z = get_offset_position(x, y, z, scale)
-        with open(REGISTRY_FILE, "a") as f:
-            f.write(f"{final_x},{final_y},{scale}\n")
 
         visual_obj = os.path.join(obj_dir, "visual.obj")
         collision_obj = os.path.join(obj_dir, "collision.obj")
